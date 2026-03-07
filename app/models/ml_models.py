@@ -6,6 +6,7 @@ Students must implement the AI logic (marked with TODO) and provide their own .p
 """
 import pickle
 import os
+import json
 from typing import Optional, List, Dict, Any
 import numpy as np
 from collections import Counter
@@ -14,8 +15,9 @@ from collections import Counter
 class DeliveryTimeModel:
     def __init__(self, model_path: Optional[str] = None):
         self.model = None
+        self.encoding_map: Optional[Dict[str, Dict[str, int]]] = None
         self.is_ai = False
-        
+
         if model_path and os.path.exists(model_path):
             try:
                 with open(model_path, 'rb') as f:
@@ -23,34 +25,29 @@ class DeliveryTimeModel:
                 self.is_ai = True
             except Exception:
                 pass
+            # Load label encodings (JSON map) so we use the same encoding as in training
+            encodings_path = os.path.normpath(
+                os.path.join(os.path.dirname(model_path), "..", "encodings", "delivery_encodings.json")
+            )
+            if os.path.exists(encodings_path):
+                try:
+                    with open(encodings_path) as f:
+                        self.encoding_map = json.load(f)
+                except Exception:
+                    self.encoding_map = None
     
     def predict(self, distance_km: float, weather: str, traffic_level: str,
                 time_of_day: str, vehicle_type: str, preparation_time_min: float,
                 courier_experience_yrs: float) -> Dict[str, Any]:
-        if self.is_ai and self.model:
-            # ============================================================
-            # TODO: IMPLEMENT AI PREDICTION (Students)
-            # ============================================================
-            # You have access to:
-            #   - self.model: your trained model loaded from .pkl file
-            #   - All input parameters above (distance_km, weather, etc.)
-            #
-            # Steps:
-            #   1. Encode the input features into numerical format
-            #      (use the _encode_features helper method below)
-            #   2. Call self.model.predict() with the encoded features
-            #   3. Return the prediction
-            #
-            # Expected return format:
-            #   {"time": <predicted_minutes (float)>, "model": "ai"}
-            #
-            # Example:
-            #   features = self._encode_features(distance_km, weather, ...)
-            #   prediction = self.model.predict([features])[0]
-            #   return {"time": round(float(prediction), 2), "model": "ai"}
-            # ============================================================
-            pass  # Replace this with your implementation
-        
+        if self.is_ai and self.model and self.encoding_map:
+            features = self._encode_features(
+                distance_km, weather, traffic_level, time_of_day,
+                vehicle_type, preparation_time_min, courier_experience_yrs
+            )
+            if features is not None:
+                prediction = self.model.predict([features])[0]
+                return {"time": round(float(prediction), 2), "model": "ai"}
+
         # Basic rule-based formula (DO NOT MODIFY - this is the fallback)
         base_time = preparation_time_min + (distance_km * 3)
 
@@ -83,20 +80,25 @@ class DeliveryTimeModel:
     
     def _encode_features(self, distance_km: float, weather: str, traffic_level: str,
                          time_of_day: str, vehicle_type: str, preparation_time_min: float,
-                         courier_experience_yrs: float) -> List[float]:
-        # ============================================================
-        # TODO: ENCODE FEATURES (Students)
-        # ============================================================
-        # Convert categorical string features into numerical values
-        # that your ML model expects.
-        #
-        # Hint: Create a mapping dict for each categorical feature,
-        # e.g. weather_encoding = {"Clear": 0, "Windy": 1, ...}
-        #
-        # Return a list of floats: [distance_km, weather_num, traffic_num,
-        #                            time_num, vehicle_num, prep_time, experience]
-        # ============================================================
-        pass  # Replace this with your implementation
+                         courier_experience_yrs: float) -> Optional[List[float]]:
+        """Encode inputs using the saved delivery_encodings.json map (same as training)."""
+        if not self.encoding_map:
+            return None
+        m = self.encoding_map
+        # Unseen categories: use first code in map as fallback (or 0)
+        def get_code(col: str, value: str) -> int:
+            if value is None or (isinstance(value, float) and np.isnan(value)):
+                value = ""
+            return m.get(col, {}).get(str(value).strip(), 0)
+        return [
+            float(distance_km),
+            float(get_code("Weather", weather)),
+            float(get_code("Traffic_Level", traffic_level)),
+            float(get_code("Time_of_Day", time_of_day)),
+            float(get_code("Vehicle_Type", vehicle_type)),
+            float(preparation_time_min),
+            float(courier_experience_yrs),
+        ]
 
 
 class RecommendationModel:

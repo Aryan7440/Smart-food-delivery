@@ -2,6 +2,10 @@
 
 Place your trained `.pkl` model files here.
 
+## Delivery time model
+
+- **`../delivery_encodings.json`** (in `app/ml/`): Label encodings for Weather, Traffic_Level, Time_of_Day, Vehicle_Type. Generated when you run the encoding cell in `notebook/food_delivery_estimation.ipynb`. The app loads this so it uses the same encoding as training (no sklearn at inference).
+
 ## Expected Files
 
 | File | Description | Format |

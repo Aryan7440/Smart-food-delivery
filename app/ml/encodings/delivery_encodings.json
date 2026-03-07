@@ -1,0 +1,25 @@
+{
+  "Weather": {
+    "Clear": 0,
+    "Foggy": 1,
+    "Rainy": 2,
+    "Snowy": 3,
+    "Windy": 4
+  },
+  "Traffic_Level": {
+    "High": 0,
+    "Low": 1,
+    "Medium": 2
+  },
+  "Time_of_Day": {
+    "Afternoon": 0,
+    "Evening": 1,
+    "Morning": 2,
+    "Night": 3
+  },
+  "Vehicle_Type": {
+    "Bike": 0,
+    "Car": 1,
+    "Scooter": 2
+  }
+}
