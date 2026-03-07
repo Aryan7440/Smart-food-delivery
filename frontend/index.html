@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Food Ordering — AI Dashboard</title>
+  <meta name="description"
+    content="AI-powered food ordering backend dashboard with delivery prediction, menu recommendation, review classification, and cuisine detection." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="index.css" />
+</head>
+
+<body>
+
+  <!-- ===== Hero ===== -->
+  <header class="hero">
+    <span class="hero__emoji">🍔</span>
+    <h1 class="hero__title">Smart Food Ordering</h1>
+    <p class="hero__subtitle">Test the AI-powered APIs below. Each card calls a real backend endpoint and shows live
+      results.</p>
+    <div class="hero__badge">Server connected — localhost:8000</div>
+  </header>
+
+  <!-- ===== API Cards Grid ===== -->
+  <main class="api-grid">
+
+    <!-- ==============================
+         1. DELIVERY TIME PREDICTION
+         ============================== -->
+    <section class="api-card api-card--delivery">
+      <div class="api-card__header">
+        <div class="api-card__icon">🚚</div>
+        <h2 class="api-card__title">Delivery Time Prediction</h2>
+      </div>
+      <div class="api-card__endpoint"><span class="method">POST</span>/order/delivery-time</div>
+
+      <form id="delivery-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="delivery-distance">Distance (km)</label>
+            <input type="number" id="delivery-distance" step="0.1" min="0.1" max="50" value="5.5" required />
+          </div>
+          <div class="form-group">
+            <label for="delivery-prep-time">Prep Time (min)</label>
+            <input type="number" id="delivery-prep-time" step="1" min="0" max="120" value="15" required />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="delivery-weather">Weather</label>
+            <select id="delivery-weather">
+              <option value="Clear">☀️ Clear</option>
+              <option value="Windy">💨 Windy</option>
+              <option value="Foggy">🌫️ Foggy</option>
+              <option value="Rainy" selected>🌧️ Rainy</option>
+              <option value="Snowy">❄️ Snowy</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="delivery-traffic">Traffic Level</label>
+            <select id="delivery-traffic">
+              <option value="Low">🟢 Low</option>
+              <option value="Medium" selected>🟡 Medium</option>
+              <option value="High">🔴 High</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="delivery-time-of-day">Time of Day</label>
+            <select id="delivery-time-of-day">
+              <option value="Morning">🌅 Morning</option>
+              <option value="Afternoon">☀️ Afternoon</option>
+              <option value="Evening" selected>🌆 Evening</option>
+              <option value="Night">🌙 Night</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="delivery-vehicle">Vehicle Type</label>
+            <select id="delivery-vehicle">
+              <option value="Scooter" selected>🛵 Scooter</option>
+              <option value="Bike">🏍️ Bike</option>
+              <option value="Car">🚗 Car</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="delivery-experience">Courier Experience (years)</label>
+          <input type="number" id="delivery-experience" step="0.5" min="0" max="30" value="2.5" required />
+        </div>
+        <button type="submit" class="btn-submit" id="delivery-btn">
+          <span class="btn-text">Predict Delivery Time</span>
+          <span class="spinner"></span>
+        </button>
+      </form>
+
+      <div class="result-box" id="delivery-result">
+        <div class="result-box__title">Prediction Result</div>
+        <div class="result-box__main" id="delivery-result-main"></div>
+        <div class="result-box__details" id="delivery-result-details"></div>
+      </div>
+    </section>
+
+    <!-- ==============================
+         2. MENU RECOMMENDATION
+         ============================== -->
+    <section class="api-card api-card--recommend">
+      <div class="api-card__header">
+        <div class="api-card__icon">🍽️</div>
+        <h2 class="api-card__title">Menu Recommendation</h2>
+      </div>
+      <div class="api-card__endpoint"><span class="method">POST</span>/menu/recommend</div>
+
+      <form id="recommend-form">
+        <div class="form-group">
+          <label>Past Orders</label>
+          <div class="tags-input" id="recommend-tags">
+            <input type="text" id="recommend-input" placeholder="Type an item & press Enter..." />
+          </div>
+          <div class="tags-hint">Try: pizza, burger, pasta, biryani, noodles, taco, sandwich, salad</div>
+        </div>
+        <button type="submit" class="btn-submit" id="recommend-btn">
+          <span class="btn-text">Get Recommendation</span>
+          <span class="spinner"></span>
+        </button>
+      </form>
+
+      <div class="result-box" id="recommend-result">
+        <div class="result-box__title">Recommended Item</div>
+        <div class="result-box__main" id="recommend-result-main"></div>
+        <div class="result-box__details" id="recommend-result-details"></div>
+      </div>
+    </section>
+
+    <!-- ==============================
+         3. REVIEW CLASSIFICATION
+         ============================== -->
+    <section class="api-card api-card--review">
+      <div class="api-card__header">
+        <div class="api-card__icon">🔍</div>
+        <h2 class="api-card__title">Review Classification</h2>
+      </div>
+      <div class="api-card__endpoint"><span class="method">POST</span>/review/fake-or-real</div>
+
+      <form id="review-form">
+        <div class="form-group">
+          <label for="review-rating">Rating (1-5)</label>
+          <input type="number" id="review-rating" step="0.1" min="1" max="5" value="4.5" required />
+        </div>
+        <div class="form-group">
+          <label for="review-text">Review Text</label>
+          <textarea id="review-text" placeholder="Enter a restaurant review..." maxlength="1000"
+            required>The food was excellent and delivery was very prompt.</textarea>
+        </div>
+        <button type="submit" class="btn-submit" id="review-btn">
+          <span class="btn-text">Classify Review</span>
+          <span class="spinner"></span>
+        </button>
+      </form>
+
+      <div class="result-box" id="review-result">
+        <div class="result-box__title">Classification Result</div>
+        <div class="result-box__main" id="review-result-main"></div>
+        <div class="result-box__details" id="review-result-details"></div>
+      </div>
+    </section>
+
+    <!-- ==============================
+         4. CUISINE CLASSIFICATION
+         ============================== -->
+    <section class="api-card api-card--cuisine">
+      <div class="api-card__header">
+        <div class="api-card__icon">🌮</div>
+        <h2 class="api-card__title">Cuisine Classification</h2>
+      </div>
+      <div class="api-card__endpoint"><span class="method">POST</span>/restaurant/cuisine-classifier</div>
+
+      <form id="cuisine-form">
+        <div class="form-group">
+          <label>Menu Items</label>
+          <div class="tags-input" id="cuisine-tags">
+            <input type="text" id="cuisine-input" placeholder="Type a menu item & press Enter..." />
+          </div>
+          <div class="tags-hint">Try: paneer tikka, naan, biryani, pizza, pasta, taco, noodles</div>
+        </div>
+        <button type="submit" class="btn-submit" id="cuisine-btn">
+          <span class="btn-text">Classify Cuisine</span>
+          <span class="spinner"></span>
+        </button>
+      </form>
+
+      <div class="result-box" id="cuisine-result">
+        <div class="result-box__title">Cuisine Detected</div>
+        <div class="result-box__main" id="cuisine-result-main"></div>
+        <div class="result-box__details" id="cuisine-result-details"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== Footer ===== -->
+  <footer class="footer">
+    Smart Food Ordering Dashboard · API docs at <a href="http://localhost:8000/docs"
+      target="_blank">localhost:8000/docs</a>
+  </footer>
+
+  <script src="index.js"></script>
+</body>
+
+</html>
