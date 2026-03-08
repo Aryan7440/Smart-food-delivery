@@ -11,7 +11,7 @@ Place your trained `.pkl` model files here.
 | File | Description | Format |
 |------|-------------|--------|
 | `delivery_model.pkl` | Delivery time predictor | sklearn model with `.predict()` |
-| `recommendation_model.pkl` | Item recommendation | `{"embeddings": {item: {similar: score}}}` |
+| `food_recommender.pt` | Item recommendation | PyTorch model loaded by `RecommendationModel` + `encodings/name2id.json` & `id2name.json` |
 | `review_model.pkl` | Fake review detector | `{"model": classifier, "vectorizer": tfidf}` |
 | `cuisine_model.pkl` | Cuisine classifier | `{"model": classifier, "vectorizer": tfidf}` |
 

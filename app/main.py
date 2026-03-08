@@ -2,7 +2,10 @@
 Main FastAPI application
 Smart Food Ordering Backend with AI-powered APIs
 """
+import logging
 from fastapi import FastAPI
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.models.schemas import HealthResponse
