@@ -1,32 +1,27 @@
-"""
-API endpoints for review classification
-"""
+"""API endpoints for review classification."""
 from fastapi import APIRouter, Depends
 from app.models.schemas import ReviewClassificationRequest, ReviewClassificationResponse
 from app.services.review_service import ReviewService
-from app.config import get_settings
-import os
 
 router = APIRouter(prefix="/review", tags=["Review"])
 
-def get_review_service():
-    """Dependency to get review service instance"""
-    settings = get_settings()
-    model_path = os.path.join(settings.model_dir, "review_model.pkl")
-    return ReviewService(model_path if settings.use_ai_models else None)
+
+def get_review_service() -> ReviewService:
+    from app.models.registry import get_review_model
+    return ReviewService(model=get_review_model())
 
 
 @router.post("/fake-or-real", response_model=ReviewClassificationResponse)
 async def classify_review(
     request: ReviewClassificationRequest,
-    service: ReviewService = Depends(get_review_service)
+    service: ReviewService = Depends(get_review_service),
 ):
     """
     Classify if a restaurant review is genuine or fake.
-    
+
     - **rating**: Restaurant rating (1-5)
     - **review_text**: The review text to classify
-    
+
     Example:
     ```
     {

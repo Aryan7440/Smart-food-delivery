@@ -1,73 +1,64 @@
 """
-ML Model wrapper classes for inference
+ML model wrapper classes.
 
-Each class loads a trained model file and provides prediction methods.
-Students must implement the AI logic (marked with TODO) and provide their own model files.
+Each class wraps a trained model file and exposes a single predict/classify
+method.  When the model file is absent or fails to load the class falls back
+to a rule-based implementation so the API always returns a response.
+
+Students: implement the AI logic in the sections marked TODO.
 """
-import pickle
-import os
 import json
 import logging
-from typing import Optional, List, Dict, Any
-import numpy as np
+import os
+import pickle
 from collections import Counter
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+
+from app.constants import (
+    CLIP_PROMPT_TEMPLATES,
+    CUISINE_KEYWORDS,
+    DISTANCE_MINUTES_PER_KM,
+    EXPERIENCED_COURIER_MULTIPLIER,
+    EXPERIENCED_COURIER_YEARS,
+    FOOD101_LABELS,
+    INEXPERIENCED_COURIER_MULTIPLIER,
+    INEXPERIENCED_COURIER_YEARS,
+    MAX_SEQ_LEN,
+    PEAK_TIME_MULTIPLIER,
+    PEAK_TIMES,
+    TRAFFIC_MULTIPLIERS,
+    VEHICLE_MULTIPLIERS,
+    WEATHER_MULTIPLIERS,
+)
+from app.models.food_recommender import TORCH_AVAILABLE, FoodRecommender, pad_sequence
 
 logger = logging.getLogger(__name__)
 
 try:
     import torch
-    import torch.nn as nn
-    TORCH_AVAILABLE = True
+    import torch.nn.functional as F
 except Exception:
-    torch = None
-    nn = None
-    TORCH_AVAILABLE = False
+    torch = None  # type: ignore[assignment]
+    F = None      # type: ignore[assignment]
 
-MAX_SEQ_LEN = 50  # must match notebook/food-recommandation.ipynb
-
-
-def _pad_sequence(seq: list, max_len: int, pad_value: int = 0) -> list:
-    """Left-pad a sequence to max_len. Truncate from left if too long."""
-    seq = seq[-max_len:]
-    pad = [pad_value] * (max_len - len(seq))
-    return pad + seq
-
-
-if TORCH_AVAILABLE:
-    class FoodRecommender(nn.Module):
-        """Transformer-based next-item recommender. Must match notebook architecture."""
-
-        def __init__(self, num_items: int, hidden_dim: int = 64, num_heads: int = 2, num_layers: int = 2, dropout: float = 0.1):
-            super().__init__()
-            self.item_embedding = nn.Embedding(num_items, hidden_dim, padding_idx=0)
-            self.hour_embedding = nn.Embedding(25, hidden_dim, padding_idx=0)
-            self.dow_embedding = nn.Embedding(8, hidden_dim, padding_idx=0)
-            self.pos_embedding = nn.Embedding(MAX_SEQ_LEN, hidden_dim)
-            encoder_layer = nn.TransformerEncoderLayer(
-                d_model=hidden_dim, nhead=num_heads, dropout=dropout, batch_first=True
-            )
-            self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-            self.output = nn.Linear(hidden_dim, num_items)
-            self.dropout = nn.Dropout(dropout)
-
-        def forward(self, item_seq, hour_seq, dow_seq):
-            batch_size, seq_len = item_seq.shape
-            positions = torch.arange(seq_len, device=item_seq.device).unsqueeze(0).expand(batch_size, -1)
-            x = (
-                self.item_embedding(item_seq)
-                + self.hour_embedding(hour_seq)
-                + self.dow_embedding(dow_seq)
-                + self.pos_embedding(positions)
-            )
-            x = self.dropout(x)
-            padding_mask = item_seq == 0
-            x = self.transformer(x, src_key_padding_mask=padding_mask)
-            x = x[:, -1, :]
-            return self.output(x)
-else:
-    FoodRecommender = None
+try:
+    from transformers import (
+        BlipForConditionalGeneration,
+        BlipProcessor,
+        CLIPModel,
+        CLIPProcessor,
+    )
+    from PIL import Image
+    TRANSFORMERS_AVAILABLE = True
+except Exception:
+    TRANSFORMERS_AVAILABLE = False
 
 
+# ---------------------------------------------------------------------------
+# DeliveryTimeModel
+# ---------------------------------------------------------------------------
 class DeliveryTimeModel:
     def __init__(self, model_path: Optional[str] = None):
         self.model = None
@@ -76,12 +67,12 @@ class DeliveryTimeModel:
 
         if model_path and os.path.exists(model_path):
             try:
-                with open(model_path, 'rb') as f:
+                with open(model_path, "rb") as f:
                     self.model = pickle.load(f)
                 self.is_ai = True
-            except Exception:
-                pass
-            # Load label encodings (JSON map) so we use the same encoding as in training
+            except Exception as exc:
+                logger.warning("DeliveryTimeModel: failed to load %s: %s", model_path, exc)
+
             encodings_path = os.path.normpath(
                 os.path.join(os.path.dirname(model_path), "..", "encodings", "delivery_encodings.json")
             )
@@ -89,63 +80,61 @@ class DeliveryTimeModel:
                 try:
                     with open(encodings_path) as f:
                         self.encoding_map = json.load(f)
-                except Exception:
-                    self.encoding_map = None
-    
-    def predict(self, distance_km: float, weather: str, traffic_level: str,
-                time_of_day: str, vehicle_type: str, preparation_time_min: float,
-                courier_experience_yrs: float) -> Dict[str, Any]:
+                except Exception as exc:
+                    logger.warning("DeliveryTimeModel: failed to load encodings: %s", exc)
+
+    def predict(
+        self,
+        distance_km: float,
+        weather: str,
+        traffic_level: str,
+        time_of_day: str,
+        vehicle_type: str,
+        preparation_time_min: float,
+        courier_experience_yrs: float,
+    ) -> Dict[str, Any]:
         if self.is_ai and self.model and self.encoding_map:
             features = self._encode_features(
                 distance_km, weather, traffic_level, time_of_day,
-                vehicle_type, preparation_time_min, courier_experience_yrs
+                vehicle_type, preparation_time_min, courier_experience_yrs,
             )
             if features is not None:
                 prediction = self.model.predict([features])[0]
                 return {"time": round(float(prediction), 2), "model": "ai"}
 
-        # Basic rule-based formula (DO NOT MODIFY - this is the fallback)
-        base_time = preparation_time_min + (distance_km * 3)
-
-        # Weather impact
-        weather_multiplier = {
-            "Clear": 1.0, "Windy": 1.1, "Foggy": 1.2,
-            "Rainy": 1.3, "Snowy": 1.5
-        }
-        base_time *= weather_multiplier.get(weather, 1.0)
-
-        # Traffic impact
-        traffic_multiplier = {"Low": 1.0, "Medium": 1.25, "High": 1.5}
-        base_time *= traffic_multiplier.get(traffic_level, 1.0)
-
-        # Time of day impact
-        if time_of_day in ["Evening", "Night"]:
-            base_time *= 1.15
-
-        # Vehicle type impact
-        vehicle_multiplier = {"Bike": 0.85, "Scooter": 1.0, "Car": 1.1}
-        base_time *= vehicle_multiplier.get(vehicle_type, 1.0)
-
-        # Experienced couriers are faster
-        if courier_experience_yrs >= 3:
-            base_time *= 0.9
-        elif courier_experience_yrs < 1:
-            base_time *= 1.1
+        # Rule-based fallback (DO NOT MODIFY)
+        base_time = preparation_time_min + (distance_km * DISTANCE_MINUTES_PER_KM)
+        base_time *= WEATHER_MULTIPLIERS.get(weather, 1.0)
+        base_time *= TRAFFIC_MULTIPLIERS.get(traffic_level, 1.0)
+        if time_of_day in PEAK_TIMES:
+            base_time *= PEAK_TIME_MULTIPLIER
+        base_time *= VEHICLE_MULTIPLIERS.get(vehicle_type, 1.0)
+        if courier_experience_yrs >= EXPERIENCED_COURIER_YEARS:
+            base_time *= EXPERIENCED_COURIER_MULTIPLIER
+        elif courier_experience_yrs < INEXPERIENCED_COURIER_YEARS:
+            base_time *= INEXPERIENCED_COURIER_MULTIPLIER
 
         return {"time": round(base_time, 2), "model": "basic"}
-    
-    def _encode_features(self, distance_km: float, weather: str, traffic_level: str,
-                         time_of_day: str, vehicle_type: str, preparation_time_min: float,
-                         courier_experience_yrs: float) -> Optional[List[float]]:
-        """Encode inputs using the saved delivery_encodings.json map (same as training)."""
+
+    def _encode_features(
+        self,
+        distance_km: float,
+        weather: str,
+        traffic_level: str,
+        time_of_day: str,
+        vehicle_type: str,
+        preparation_time_min: float,
+        courier_experience_yrs: float,
+    ) -> Optional[List[float]]:
         if not self.encoding_map:
             return None
         m = self.encoding_map
-        # Unseen categories: use first code in map as fallback (or 0)
+
         def get_code(col: str, value: str) -> int:
             if value is None or (isinstance(value, float) and np.isnan(value)):
                 value = ""
             return m.get(col, {}).get(str(value).strip(), 0)
+
         return [
             float(distance_km),
             float(get_code("Weather", weather)),
@@ -157,11 +146,12 @@ class DeliveryTimeModel:
         ]
 
 
+# ---------------------------------------------------------------------------
+# RecommendationModel
+# ---------------------------------------------------------------------------
 class RecommendationModel:
     def __init__(self, model_path: Optional[str] = None):
-        # Legacy embedding-based recommender (pickle)
         self.item_embeddings: Optional[Dict[str, Dict[str, float]]] = None
-        # New PyTorch recommender (.pt) + encodings
         self.torch_model = None
         self.name2id: Optional[Dict[str, int]] = None
         self.id2name: Optional[Dict[str, str]] = None
@@ -171,55 +161,53 @@ class RecommendationModel:
         if not model_path:
             logger.warning("RecommendationModel: no model_path provided, using basic fallback")
             return
-
         if not os.path.exists(model_path):
-            logger.warning("RecommendationModel: model_path does not exist: %s", model_path)
+            logger.warning("RecommendationModel: path does not exist: %s", model_path)
             return
 
-        # Prefer PyTorch .pt recommender if provided
         if model_path.endswith(".pt"):
             if not TORCH_AVAILABLE:
-                logger.warning("RecommendationModel: .pt model requested but torch not installed (pip install torch)")
+                logger.warning("RecommendationModel: .pt model requested but torch is not installed")
                 return
             try:
                 self._load_torch_model(model_path)
-                self.is_ai = self.torch_model is not None and self.name2id and self.id2name
-                logger.info("RecommendationModel: torch load ok, is_ai=%s, name2id_len=%s",
-                            self.is_ai, len(self.name2id) if self.name2id else 0)
-            except Exception as e:
-                logger.exception("RecommendationModel: failed to load torch model from %s: %s", model_path, e)
+                self.is_ai = self.torch_model is not None and bool(self.name2id) and bool(self.id2name)
+                logger.info(
+                    "RecommendationModel: loaded (is_ai=%s, vocab=%s)",
+                    self.is_ai, len(self.name2id) if self.name2id else 0,
+                )
+            except Exception as exc:
+                logger.exception("RecommendationModel: failed to load torch model: %s", exc)
                 self.torch_model = None
                 self.is_ai = False
         else:
-            # Fallback: legacy pickle with 'embeddings' dict
             try:
-                with open(model_path, 'rb') as f:
+                with open(model_path, "rb") as f:
                     data = pickle.load(f)
-                    self.item_embeddings = data.get('embeddings', {})
+                self.item_embeddings = data.get("embeddings", {})
                 self.is_ai = bool(self.item_embeddings)
-            except Exception as e:
-                logger.exception("RecommendationModel: failed to load pickle from %s: %s", model_path, e)
+            except Exception as exc:
+                logger.exception("RecommendationModel: failed to load pickle: %s", exc)
                 self.item_embeddings = None
                 self.is_ai = False
-    
+
     def _load_torch_model(self, model_path: str) -> None:
-        """Load PyTorch food recommender checkpoint (dict with model_state, num_items) and encodings."""
         if torch is None or FoodRecommender is None:
             return
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info("RecommendationModel: loading .pt from %s (device=%s)", model_path, self.device)
+        logger.info("RecommendationModel: loading %s on %s", model_path, self.device)
         ckpt = torch.load(model_path, map_location=self.device, weights_only=False)
         if not isinstance(ckpt, dict) or "model_state" not in ckpt or "num_items" not in ckpt:
-            logger.warning("RecommendationModel: expected dict with model_state and num_items, got %s",
-                           type(ckpt).__name__ if not isinstance(ckpt, dict) else list(ckpt.keys()))
+            logger.warning(
+                "RecommendationModel: unexpected checkpoint format — keys: %s",
+                list(ckpt.keys()) if isinstance(ckpt, dict) else type(ckpt).__name__,
+            )
             return
-        num_items = ckpt["num_items"]
-        self.torch_model = FoodRecommender(num_items=num_items)
-        self.torch_model.load_state_dict(ckpt["model_state"], strict=True)
-        self.torch_model.to(self.device)
-        self.torch_model.eval()
 
-        # Load encodings: product name -> id, id -> name (from encodings/ or fallback to checkpoint)
+        self.torch_model = FoodRecommender(num_items=ckpt["num_items"])
+        self.torch_model.load_state_dict(ckpt["model_state"], strict=True)
+        self.torch_model.to(self.device).eval()
+
         enc_dir = os.path.normpath(os.path.join(os.path.dirname(model_path), "..", "encodings"))
         name2id_path = os.path.join(enc_dir, "name2id.json")
         id2name_path = os.path.join(enc_dir, "id2name.json")
@@ -232,135 +220,98 @@ class RecommendationModel:
             self.name2id = ckpt["item2id"]
             self.id2name = {str(k): v for k, v in ckpt["id2item"].items()}
         else:
-            logger.warning("RecommendationModel: missing name2id.json/id2name.json and no item2id/id2item in checkpoint")
+            logger.warning("RecommendationModel: encodings not found in filesystem or checkpoint")
 
     def recommend(self, past_orders: List[str]) -> Dict[str, Any]:
-        # AI recommender using PyTorch model + name/id mappings
         if self.torch_model is not None and self.name2id and self.id2name:
-            return self._ai_recommend_torch(past_orders)
-
-        # Legacy embedding-based AI recommender (if implemented)
+            return self._torch_recommend(past_orders)
         if self.is_ai and self.item_embeddings:
-            return self._ai_recommend(past_orders)
+            return self._legacy_recommend(past_orders)
+        return self._basic_recommend(past_orders)
 
-        # Basic fallback: most frequently ordered item
+    def _basic_recommend(self, past_orders: List[str]) -> Dict[str, Any]:
         counter = Counter(past_orders)
-        most_common = counter.most_common(1)[0]
+        item, count = counter.most_common(1)[0]
         return {
-            "item": most_common[0],
-            "confidence": round(most_common[1] / len(past_orders), 2),
+            "item": item,
+            "confidence": round(count / len(past_orders), 2),
             "model": "basic",
-            "reasoning": f"Most frequently ordered ({most_common[1]} times)"
+            "reasoning": f"Most frequently ordered ({count} times)",
         }
-    
-    def _ai_recommend_torch(self, past_orders: List[str]) -> Dict[str, Any]:
-        """
-        Recommend using the trained PyTorch model saved as food_recommender.pt.
 
-        Steps:
-        - Map past order names (already lowercased/stripped by the schema) to IDs via name2id.
-        - Run the sequence through the model to get scores over all items.
-        - Mask already-ordered items so we don't recommend them again.
-        - Take the top-scoring item and convert back to a readable name via id2name.
-        """
+    def _torch_recommend(self, past_orders: List[str]) -> Dict[str, Any]:
         assert self.torch_model is not None and self.name2id and self.id2name
         if torch is None:
-            # Should not happen if we got here, but guard anyway
-            counter = Counter(past_orders)
-            most_common = counter.most_common(1)[0]
-            return {
-                "item": most_common[0],
-                "confidence": round(most_common[1] / len(past_orders), 2),
-                "model": "basic",
-                "reasoning": "PyTorch not available, using basic fallback"
-            }
+            return self._basic_recommend(past_orders)
 
-        # Map known names to IDs
-        known_ids = [self.name2id[name] for name in past_orders if name in self.name2id]
+        known_ids = [self.name2id[n] for n in past_orders if n in self.name2id]
         if not known_ids:
             unmatched = [n for n in past_orders if n not in self.name2id]
-            logger.warning("RecommendationModel: no past_orders matched catalog, unmatched=%s", unmatched[:5])
-            counter = Counter(past_orders)
-            most_common = counter.most_common(1)[0]
-            return {
-                "item": most_common[0],
-                "confidence": round(most_common[1] / len(past_orders), 2),
-                "model": "basic",
-                "reasoning": "No past orders matched the trained catalog"
-            }
+            logger.warning("RecommendationModel: no past_orders matched catalog, sample: %s", unmatched[:5])
+            result = self._basic_recommend(past_orders)
+            result["reasoning"] = "No past orders matched the trained catalog"
+            return result
 
-        # Pad item sequence (left-pad with 0), use zeros for hour/dow (API has no time info)
-        item_seq = _pad_sequence(known_ids, MAX_SEQ_LEN, pad_value=0)
-        hour_seq = [0] * MAX_SEQ_LEN
-        dow_seq = [0] * MAX_SEQ_LEN
+        item_seq = pad_sequence(known_ids, MAX_SEQ_LEN, pad_value=0)
+        zeros = [0] * MAX_SEQ_LEN
 
         item_t = torch.tensor([item_seq], dtype=torch.long, device=self.device)
-        hour_t = torch.tensor([hour_seq], dtype=torch.long, device=self.device)
-        dow_t = torch.tensor([dow_seq], dtype=torch.long, device=self.device)
+        hour_t = torch.tensor([zeros],    dtype=torch.long, device=self.device)
+        dow_t  = torch.tensor([zeros],    dtype=torch.long, device=self.device)
 
         with torch.no_grad():
             logits = self.torch_model(item_t, hour_t, dow_t)
 
-        scores = logits[0]  # (num_items,)
-        scores = scores.clone().detach()
-
-        # Mask already ordered items so we don't recommend them again
+        scores = logits[0].clone()
         for item_id in set(known_ids):
             if 0 <= item_id < scores.shape[0]:
                 scores[item_id] = -1e9
 
-        # Convert to probabilities
         probs = torch.softmax(scores, dim=0)
         top_val, top_idx = torch.max(probs, dim=0)
-        rec_id = int(top_idx.item())
-        rec_name = self.id2name.get(str(rec_id), f"item_{rec_id}")
+        rec_name = self.id2name.get(str(int(top_idx.item())), f"item_{top_idx.item()}")
 
         return {
             "item": rec_name,
             "confidence": round(float(top_val.item()), 3),
             "model": "ai",
-            "reasoning": f"Recommended based on {len(known_ids)} past orders using learned co-occurrence patterns"
+            "reasoning": f"Recommended based on {len(known_ids)} past orders using learned co-occurrence patterns",
         }
 
-    def _ai_recommend(self, past_orders: List[str]) -> Dict[str, Any]:
-        # Placeholder for legacy embedding-based recommender if you choose to use it.
-        # Currently unused when using the PyTorch food_recommender.pt model.
-        counter = Counter(past_orders)
-        most_common = counter.most_common(1)[0]
-        return {
-            "item": most_common[0],
-            "confidence": round(most_common[1] / len(past_orders), 2),
-            "model": "basic",
-            "reasoning": "Legacy embedding-based recommender not implemented; using basic fallback"
-        }
+    def _legacy_recommend(self, past_orders: List[str]) -> Dict[str, Any]:
+        # Placeholder — currently unused when the PyTorch model is available.
+        return self._basic_recommend(past_orders)
 
 
+# ---------------------------------------------------------------------------
+# ReviewClassifierModel
+# ---------------------------------------------------------------------------
 class ReviewClassifierModel:
     def __init__(self, model_path: Optional[str] = None):
         self.model = None
         self.vectorizer = None
         self.is_ai = False
-        
+
         if model_path and os.path.exists(model_path):
             try:
-                with open(model_path, 'rb') as f:
+                with open(model_path, "rb") as f:
                     data = pickle.load(f)
-                    self.model = data.get('model')
-                    self.vectorizer = data.get('vectorizer')
+                self.model = data.get("model")
+                self.vectorizer = data.get("vectorizer")
                 self.is_ai = True
-            except Exception:
-                pass
-    
+            except Exception as exc:
+                logger.warning("ReviewClassifierModel: failed to load %s: %s", model_path, exc)
+
     def classify(self, rating: float, review_text: str) -> Dict[str, Any]:
         if self.is_ai and self.model and self.vectorizer:
-            # ============================================================
+            # ================================================================
             # TODO: IMPLEMENT AI REVIEW CLASSIFICATION (Students)
-            # ============================================================
+            # ================================================================
             # You have access to:
-            #   - self.model: trained classifier (e.g., LogisticRegression)
+            #   - self.model:      trained classifier (e.g. LogisticRegression)
             #   - self.vectorizer: fitted TF-IDF vectorizer
-            #   - review_text: the review string to classify
-            #   - rating: the restaurant rating (1-5)
+            #   - review_text:     the review string to classify
+            #   - rating:          the restaurant rating (1-5)
             #
             # Steps:
             #   1. Transform review_text using self.vectorizer.transform()
@@ -368,80 +319,55 @@ class ReviewClassifierModel:
             #   3. Get confidence using self.model.predict_proba()
             #
             # Expected return format:
-            #   {
-            #       "is_genuine": <True/False>,
-            #       "confidence": <float between 0-1>,
-            #       "model": "ai"
-            #   }
-            # ============================================================
-            pass  # Replace this with your implementation
-        
-        # Basic rule-based classification (DO NOT MODIFY - this is the fallback)
-        is_genuine = True
-        confidence = 0.7
-        reason = "Normal review"
-        
-        if len(review_text.split()) < 5:
-            is_genuine = False
-            confidence = 0.8
-            reason = "Too short"
-        elif review_text.count('!') > 5:
-            is_genuine = False
-            confidence = 0.75
-            reason = "Too many exclamations"
+            #   {"is_genuine": bool, "confidence": float, "model": "ai"}
+            # ================================================================
+            pass  # replace with your implementation
+
+        # Rule-based fallback (DO NOT MODIFY)
+        is_genuine, confidence, reason = True, 0.7, "Normal review"
+        words = review_text.split()
+        if len(words) < 5:
+            is_genuine, confidence, reason = False, 0.80, "Too short"
+        elif review_text.count("!") > 5:
+            is_genuine, confidence, reason = False, 0.75, "Too many exclamations"
         elif "best ever" in review_text.lower():
-            is_genuine = False
-            confidence = 0.7
-            reason = "Generic superlatives"
-        elif rating == 5 and len(review_text.split()) < 10:
-            is_genuine = False
-            confidence = 0.65
-            reason = "Perfect rating with very short review"
-        elif rating <= 1 and len(review_text.split()) < 10:
-            is_genuine = False
-            confidence = 0.65
-            reason = "Extreme low rating with very short review"
-        
-        return {
-            "is_genuine": is_genuine,
-            "confidence": confidence,
-            "model": "basic",
-            "reason": reason
-        }
+            is_genuine, confidence, reason = False, 0.70, "Generic superlatives"
+        elif rating == 5 and len(words) < 10:
+            is_genuine, confidence, reason = False, 0.65, "Perfect rating with very short review"
+        elif rating <= 1 and len(words) < 10:
+            is_genuine, confidence, reason = False, 0.65, "Extreme low rating with very short review"
+
+        return {"is_genuine": is_genuine, "confidence": confidence, "model": "basic", "reason": reason}
 
 
+# ---------------------------------------------------------------------------
+# CuisineClassifierModel
+# ---------------------------------------------------------------------------
 class CuisineClassifierModel:
-    KEYWORDS = {
-        "Indian": ["paneer", "naan", "biryani", "curry", "dal", "tikka", "tandoori", "samosa", "dosa", "idli"],
-        "Chinese": ["noodles", "fried rice", "manchurian", "chowmein", "dumpling", "wonton", "spring roll"],
-        "Italian": ["pizza", "pasta", "lasagna", "spaghetti", "ravioli", "tiramisu", "risotto", "bruschetta"],
-        "Mexican": ["taco", "burrito", "quesadilla", "enchilada", "guacamole", "salsa", "nachos", "fajita"]
-    }
-    
     def __init__(self, model_path: Optional[str] = None):
         self.model = None
         self.vectorizer = None
         self.is_ai = False
-        
+
         if model_path and os.path.exists(model_path):
             try:
-                with open(model_path, 'rb') as f:
+                with open(model_path, "rb") as f:
                     data = pickle.load(f)
-                    self.model = data.get('model')
-                    self.vectorizer = data.get('vectorizer')
+                self.model = data.get("model")
+                self.vectorizer = data.get("vectorizer")
                 self.is_ai = True
-            except Exception:
-                pass
-    
+            except Exception as exc:
+                logger.warning("CuisineClassifierModel: failed to load %s: %s", model_path, exc)
+
     def classify(self, menu_items: List[str]) -> Dict[str, Any]:
         if self.is_ai and self.model and self.vectorizer:
-            # ============================================================
+            # ================================================================
             # TODO: IMPLEMENT AI CUISINE CLASSIFICATION (Students)
-            # ============================================================
+            # ================================================================
             # You have access to:
-            #   - self.model: trained classifier (e.g., LogisticRegression)
+            #   - self.model:      trained classifier (e.g. LogisticRegression)
             #   - self.vectorizer: fitted TF-IDF vectorizer
-            #   - menu_items: list of menu item strings
+            #   - menu_items:      list of menu item strings
             #
             # Steps:
             #   1. Join menu_items into a single string
@@ -450,33 +376,179 @@ class CuisineClassifierModel:
             #   4. Get confidence using self.model.predict_proba()
             #
             # Expected return format:
-            #   {
-            #       "cuisine": "<predicted_cuisine>",
-            #       "confidence": <float between 0-1>,
-            #       "model": "ai"
-            #   }
-            # ============================================================
-            pass  # Replace this with your implementation
-        
-        # Basic keyword matching (DO NOT MODIFY - this is the fallback)
-        scores = {cuisine: 0 for cuisine in self.KEYWORDS.keys()}
-        matched = {cuisine: [] for cuisine in self.KEYWORDS.keys()}
-        
+            #   {"cuisine": str, "confidence": float, "model": "ai"}
+            # ================================================================
+            pass  # replace with your implementation
+
+        # Keyword-matching fallback (DO NOT MODIFY)
+        scores = {c: 0 for c in CUISINE_KEYWORDS}
+        matched: Dict[str, List[str]] = {c: [] for c in CUISINE_KEYWORDS}
+
         for item in menu_items:
             item_lower = item.lower()
-            for cuisine, keywords in self.KEYWORDS.items():
-                for keyword in keywords:
-                    if keyword in item_lower:
+            for cuisine, keywords in CUISINE_KEYWORDS.items():
+                for kw in keywords:
+                    if kw in item_lower:
                         scores[cuisine] += 1
-                        matched[cuisine].append(keyword)
-        
-        best_cuisine = max(scores, key=scores.get)
-        total_matches = sum(scores.values())
-        confidence = scores[best_cuisine] / total_matches if total_matches > 0 else 0.5
-        
+                        matched[cuisine].append(kw)
+
+        best = max(scores, key=scores.get)
+        total = sum(scores.values())
+        confidence = scores[best] / total if total > 0 else 0.5
+
         return {
-            "cuisine": best_cuisine,
+            "cuisine": best,
             "confidence": round(confidence, 2),
             "model": "basic",
-            "matched_keywords": list(set(matched[best_cuisine]))
+            "matched_keywords": list(set(matched[best])),
+        }
+
+
+# ---------------------------------------------------------------------------
+# FoodImageAnalyzer
+# ---------------------------------------------------------------------------
+class FoodImageAnalyzer:
+    """
+    CLIP (dish identification) + BLIP (visual description) for food images.
+    Models are downloaded from HuggingFace on first use and cached locally.
+
+    If the models cannot be loaded, ``analyze()`` returns a graceful fallback
+    response instead of raising, so the API always returns a usable response.
+    """
+
+    def __init__(self):
+        self.clip_model = None
+        self.clip_processor = None
+        self.blip_model = None
+        self.blip_processor = None
+        self.label_embeddings = None  # (num_labels, 512)
+        self.device = "cpu"
+        self.is_loaded = False
+
+        if not TRANSFORMERS_AVAILABLE:
+            logger.warning("FoodImageAnalyzer: transformers/Pillow not installed — image analysis unavailable")
+            return
+        if TORCH_AVAILABLE and torch.cuda.is_available():
+            self.device = "cuda"
+
+    def _ensure_loaded(self) -> None:
+        """Load CLIP + BLIP if not already loaded. Called at startup by the registry."""
+        if self.is_loaded:
+            return
+        if not TRANSFORMERS_AVAILABLE or not TORCH_AVAILABLE:
+            raise RuntimeError(
+                "transformers and torch are required for food image analysis. "
+                "Install them with: pip install torch transformers Pillow"
+            )
+
+        import time
+        t0 = time.time()
+
+        logger.info("FoodImageAnalyzer: loading CLIP (openai/clip-vit-base-patch32)...")
+        self.clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        self.clip_model = (
+            CLIPModel.from_pretrained("openai/clip-vit-base-patch32", torch_dtype=torch.float32)
+            .to(self.device)
+            .eval()
+        )
+
+        logger.info("FoodImageAnalyzer: loading BLIP (Salesforce/blip-image-captioning-base)...")
+        self.blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+        self.blip_model = (
+            BlipForConditionalGeneration.from_pretrained(
+                "Salesforce/blip-image-captioning-base", torch_dtype=torch.float32
+            )
+            .to(self.device)
+            .eval()
+        )
+
+        logger.info("FoodImageAnalyzer: pre-computing label embeddings for %d classes...", len(FOOD101_LABELS))
+        all_embeds = []
+        with torch.no_grad():
+            for label in FOOD101_LABELS:
+                prompts = [t.format(label) for t in CLIP_PROMPT_TEMPLATES]
+                inputs = self.clip_processor(text=prompts, return_tensors="pt", padding=True).to(self.device)
+                text_embeds = self._clip_text_embed(inputs)
+                text_embeds = F.normalize(text_embeds, dim=-1)
+                all_embeds.append(F.normalize(text_embeds.mean(dim=0), dim=-1))
+        self.label_embeddings = torch.stack(all_embeds)  # (101, 512)
+
+        self.is_loaded = True
+        logger.info("FoodImageAnalyzer: ready (device=%s, %.1fs)", self.device, time.time() - t0)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+    def _clip_text_embed(self, inputs) -> "torch.Tensor":
+        text_inputs = {k: v for k, v in inputs.items() if k in ("input_ids", "attention_mask")}
+        text_out = self.clip_model.text_model(**text_inputs)
+        pooled = text_out.pooler_output
+        if not isinstance(pooled, torch.Tensor):
+            pooled = text_out[1]
+        projected = self.clip_model.text_projection(pooled)
+        if not isinstance(projected, torch.Tensor):
+            projected = projected[0] if hasattr(projected, "__getitem__") else projected
+        return projected
+
+    def _clip_image_embed(self, inputs) -> "torch.Tensor":
+        vis_out = self.clip_model.vision_model(pixel_values=inputs["pixel_values"])
+        pooled = vis_out.pooler_output
+        if not isinstance(pooled, torch.Tensor):
+            pooled = vis_out[1]
+        projected = self.clip_model.visual_projection(pooled)
+        if not isinstance(projected, torch.Tensor):
+            projected = projected[0] if hasattr(projected, "__getitem__") else projected
+        return projected
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+    def analyze(self, image) -> Dict[str, Any]:
+        """
+        Identify the dish in *image* (CLIP) and generate a description (BLIP).
+
+        Returns a fallback dict instead of raising when the models are not loaded,
+        so callers always get a well-formed response.
+        """
+        if not self.is_loaded:
+            logger.warning("FoodImageAnalyzer: models not loaded — returning fallback response")
+            return {
+                "dish_name": "unknown",
+                "confidence": 0.0,
+                "top_5": [],
+                "description": "Image analysis unavailable — models could not be loaded.",
+                "conditional_description": "",
+                "model": "unavailable",
+            }
+
+        # CLIP: zero-shot classification
+        with torch.no_grad():
+            inputs = self.clip_processor(images=image, return_tensors="pt").to(self.device)
+            image_embed = F.normalize(self._clip_image_embed(inputs), dim=-1)
+            similarities = (image_embed @ self.label_embeddings.T).squeeze(0)
+            top_vals, top_idxs = similarities.topk(5)
+            top_5 = [
+                {"name": FOOD101_LABELS[idx], "score": round(val.item(), 4)}
+                for val, idx in zip(top_vals, top_idxs)
+            ]
+
+        # BLIP: captioning
+        with torch.no_grad():
+            blip_in = self.blip_processor(images=image, return_tensors="pt").to(self.device)
+            out = self.blip_model.generate(**blip_in, max_new_tokens=50, num_beams=5)
+            caption = self.blip_processor.decode(out[0], skip_special_tokens=True)
+
+            blip_cond = self.blip_processor(
+                images=image, text="a photograph of", return_tensors="pt"
+            ).to(self.device)
+            out_cond = self.blip_model.generate(**blip_cond, max_new_tokens=50, num_beams=5)
+            cond_caption = self.blip_processor.decode(out_cond[0], skip_special_tokens=True)
+
+        return {
+            "dish_name": top_5[0]["name"],
+            "confidence": top_5[0]["score"],
+            "top_5": top_5,
+            "description": caption,
+            "conditional_description": cond_caption,
+            "model": "ai",
         }

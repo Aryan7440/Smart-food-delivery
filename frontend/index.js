@@ -284,6 +284,112 @@ document.getElementById('cuisine-form').addEventListener('submit', async (e) => 
 });
 
 // ============================================================
+//  5. FOOD IMAGE ANALYSIS
+// ============================================================
+
+// File upload: click-to-browse + drag-and-drop
+const foodimgDropzone = document.getElementById('foodimg-dropzone');
+const foodimgFileInput = document.getElementById('foodimg-file');
+const foodimgPreview = document.getElementById('foodimg-preview');
+const foodimgPlaceholder = document.getElementById('foodimg-placeholder');
+
+// Click dropzone to open file picker
+foodimgDropzone.addEventListener('click', () => foodimgFileInput.click());
+
+// Drag events
+foodimgDropzone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  foodimgDropzone.classList.add('dragover');
+});
+foodimgDropzone.addEventListener('dragleave', () => {
+  foodimgDropzone.classList.remove('dragover');
+});
+foodimgDropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  foodimgDropzone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) {
+    foodimgFileInput.files = e.dataTransfer.files;
+    showImagePreview(file);
+  }
+});
+
+// File input change
+foodimgFileInput.addEventListener('change', () => {
+  if (foodimgFileInput.files[0]) {
+    showImagePreview(foodimgFileInput.files[0]);
+  }
+});
+
+function showImagePreview(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    foodimgPreview.src = e.target.result;
+    foodimgPreview.classList.add('visible');
+    foodimgPlaceholder.style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+// Submit: upload image as multipart/form-data
+document.getElementById('foodimg-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const file = foodimgFileInput.files[0];
+  if (!file) {
+    showError('foodimg-result', 'Please select a food image');
+    return;
+  }
+  setLoading('foodimg-btn', true);
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_BASE}/food-image/analyze`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => null);
+      const msg = err?.detail || `Server error (${response.status})`;
+      throw new Error(msg);
+    }
+
+    const result = await response.json();
+
+    // Build the main display: dish name
+    const dishName = result.dish_name
+      .split(' ')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+
+    // Build description HTML
+    const descHtml = `<div class="result-box__description">"${result.description}"</div>`;
+
+    showResult('foodimg-result',
+      `🍽️ ${dishName}`,
+      [
+        `Model: ${result.model_used}`,
+        `Confidence: ${(result.confidence * 100).toFixed(0)}%`,
+        ...result.top_5.slice(1).map(t =>
+          `${t.name} (${(t.score * 100).toFixed(0)}%)`
+        ),
+      ]
+    );
+
+    // Inject description below the main title
+    const mainEl = document.getElementById('foodimg-result-main');
+    mainEl.insertAdjacentHTML('afterend', descHtml);
+
+  } catch (err) {
+    showError('foodimg-result', err.message);
+  } finally {
+    setLoading('foodimg-btn', false);
+  }
+});
+
+// ============================================================
 //  SERVER HEALTH CHECK ON LOAD
 // ============================================================
 

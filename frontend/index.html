@@ -199,6 +199,42 @@
       </div>
     </section>
 
+    <!-- ==============================
+         5. FOOD IMAGE ANALYSIS
+         ============================== -->
+    <section class="api-card api-card--foodimg">
+      <div class="api-card__header">
+        <div class="api-card__icon">📷</div>
+        <h2 class="api-card__title">Food Image Analysis</h2>
+      </div>
+      <div class="api-card__endpoint"><span class="method">POST</span>/food-image/analyze</div>
+
+      <form id="foodimg-form">
+        <div class="form-group">
+          <label for="foodimg-file">Upload Food Photo</label>
+          <div class="file-upload" id="foodimg-dropzone">
+            <input type="file" id="foodimg-file" accept="image/jpeg,image/png,image/webp" required hidden />
+            <div class="file-upload__placeholder" id="foodimg-placeholder">
+              <span class="file-upload__icon">🖼️</span>
+              <span class="file-upload__text">Click or drag an image here</span>
+              <span class="file-upload__hint">JPEG, PNG, WebP up to 10 MB</span>
+            </div>
+            <img id="foodimg-preview" class="file-upload__preview" alt="Preview" />
+          </div>
+        </div>
+        <button type="submit" class="btn-submit" id="foodimg-btn">
+          <span class="btn-text">Analyze Food Image</span>
+          <span class="spinner"></span>
+        </button>
+      </form>
+
+      <div class="result-box" id="foodimg-result">
+        <div class="result-box__title">Analysis Result</div>
+        <div class="result-box__main" id="foodimg-result-main"></div>
+        <div class="result-box__details" id="foodimg-result-details"></div>
+      </div>
+    </section>
+
   </main>
 
   <!-- ===== Footer ===== -->

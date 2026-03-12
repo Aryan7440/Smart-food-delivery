@@ -19,6 +19,8 @@
   --accent-review-glow: rgba(6, 182, 212, 0.25);
   --accent-cuisine: #22c55e;
   --accent-cuisine-glow: rgba(34, 197, 94, 0.25);
+  --accent-foodimg: #ec4899;
+  --accent-foodimg-glow: rgba(236, 72, 153, 0.25);
 
   --border-color: rgba(148, 163, 184, 0.12);
   --error-color: #ef4444;
@@ -177,6 +179,7 @@ body::before {
 .api-card--recommend::before { background: linear-gradient(90deg, var(--accent-recommend), #c084fc); }
 .api-card--review::before { background: linear-gradient(90deg, var(--accent-review), #22d3ee); }
 .api-card--cuisine::before { background: linear-gradient(90deg, var(--accent-cuisine), #4ade80); }
+.api-card--foodimg::before { background: linear-gradient(90deg, var(--accent-foodimg), #f472b6); }
 
 .api-card:hover::before {
   height: 4px;
@@ -206,6 +209,7 @@ body::before {
 .api-card--recommend .api-card__icon { background: var(--accent-recommend-glow); }
 .api-card--review .api-card__icon { background: var(--accent-review-glow); }
 .api-card--cuisine .api-card__icon { background: var(--accent-cuisine-glow); }
+.api-card--foodimg .api-card__icon { background: var(--accent-foodimg-glow); }
 
 .api-card__title {
   font-size: 1.15rem;
@@ -351,6 +355,70 @@ body::before {
   margin-top: 4px;
 }
 
+/* ===== File Upload ===== */
+.file-upload {
+  position: relative;
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  overflow: hidden;
+  min-height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.file-upload:hover,
+.file-upload.dragover {
+  border-color: var(--accent-foodimg);
+  background: rgba(236, 72, 153, 0.05);
+}
+
+.file-upload__placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 24px;
+}
+
+.file-upload__icon {
+  font-size: 32px;
+}
+
+.file-upload__text {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.file-upload__hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.file-upload__preview {
+  display: none;
+  width: 100%;
+  max-height: 240px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+.file-upload__preview.visible {
+  display: block;
+}
+
+.result-box__description {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  line-height: 1.5;
+  font-style: italic;
+}
+
 /* ===== Buttons ===== */
 .btn-submit {
   width: 100%;
@@ -386,6 +454,7 @@ body::before {
 .api-card--recommend .btn-submit { background: linear-gradient(135deg, var(--accent-recommend), #9333ea); }
 .api-card--review .btn-submit { background: linear-gradient(135deg, var(--accent-review), #0891b2); }
 .api-card--cuisine .btn-submit { background: linear-gradient(135deg, var(--accent-cuisine), #16a34a); }
+.api-card--foodimg .btn-submit { background: linear-gradient(135deg, var(--accent-foodimg), #db2777); }
 
 /* Loading spinner inside button */
 .btn-submit .spinner {
@@ -442,6 +511,7 @@ body::before {
 .api-card--recommend .result-box__main { color: var(--accent-recommend); }
 .api-card--review .result-box__main { color: var(--accent-review); }
 .api-card--cuisine .result-box__main { color: var(--accent-cuisine); }
+.api-card--foodimg .result-box__main { color: var(--accent-foodimg); }
 
 .result-box__details {
   display: flex;

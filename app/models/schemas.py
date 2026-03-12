@@ -98,6 +98,15 @@ class CuisineClassificationResponse(BaseModel):
     matched_keywords: Optional[List[str]] = None
 
 
+class FoodImageAnalysisResponse(BaseModel):
+    dish_name: str
+    confidence: float = Field(..., ge=0, le=1)
+    top_5: List[dict]
+    description: str
+    conditional_description: str
+    model_used: str
+
+
 class HealthResponse(BaseModel):
     status: str
     app_name: str

@@ -1,25 +1,20 @@
-"""
-API endpoints for delivery time prediction
-"""
+"""API endpoints for delivery time prediction."""
 from fastapi import APIRouter, Depends
 from app.models.schemas import DeliveryTimeRequest, DeliveryTimeResponse
 from app.services.delivery_service import DeliveryService
-from app.config import get_settings
-import os
 
 router = APIRouter(prefix="/order", tags=["Delivery"])
 
-def get_delivery_service():
-    """Dependency to get delivery service instance"""
-    settings = get_settings()
-    model_path = os.path.join(settings.model_dir, "delivery_model.pkl")
-    return DeliveryService(model_path if settings.use_ai_models else None)
+
+def get_delivery_service() -> DeliveryService:
+    from app.models.registry import get_delivery_model
+    return DeliveryService(model=get_delivery_model())
 
 
 @router.post("/delivery-time", response_model=DeliveryTimeResponse)
 async def predict_delivery_time(
     request: DeliveryTimeRequest,
-    service: DeliveryService = Depends(get_delivery_service)
+    service: DeliveryService = Depends(get_delivery_service),
 ):
     """
     Predict delivery time based on:
@@ -30,7 +25,7 @@ async def predict_delivery_time(
     - Vehicle Type (Scooter/Bike/Car)
     - Preparation Time (minutes)
     - Courier Experience (years)
-    
+
     Example:
     ```
     {
