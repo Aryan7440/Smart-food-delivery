@@ -35,8 +35,9 @@ wheels/
 # Notebook data (large or private datasets)
 notebook/data/
 
-# ML model artifacts (uncomment if .pkl files are large)
-# app/ml/models/*.pkl
+# ML model artifacts — large files stored externally (see app/ml/models/README.md)
+*.safetensors
+app/ml/models/food_recommender.pt
 
 # Testing / coverage
 .pytest_cache/
@@ -68,3 +69,4 @@ node_modules/
 
 
 STUDENT_INSTRUCTIONS.md
+docs/

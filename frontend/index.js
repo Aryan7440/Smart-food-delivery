@@ -378,8 +378,10 @@ document.getElementById('foodimg-form').addEventListener('submit', async (e) => 
       ]
     );
 
-    // Inject description below the main title
+    // Inject description below the main title (remove stale one first)
     const mainEl = document.getElementById('foodimg-result-main');
+    const oldDesc = mainEl.parentElement.querySelector('.result-box__description');
+    if (oldDesc) oldDesc.remove();
     mainEl.insertAdjacentHTML('afterend', descHtml);
 
   } catch (err) {

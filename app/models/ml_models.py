@@ -49,11 +49,15 @@ try:
         BlipProcessor,
         CLIPModel,
         CLIPProcessor,
+        DistilBertForSequenceClassification,
+        DistilBertTokenizer,
     )
     from PIL import Image
     TRANSFORMERS_AVAILABLE = True
 except Exception:
     TRANSFORMERS_AVAILABLE = False
+    DistilBertForSequenceClassification = None  # type: ignore[assignment,misc]
+    DistilBertTokenizer = None                  # type: ignore[assignment,misc]
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +198,9 @@ class RecommendationModel:
     def _load_torch_model(self, model_path: str) -> None:
         if torch is None or FoodRecommender is None:
             return
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            self.device = "cuda"
+        # MPS excluded: TransformerEncoder with src_key_padding_mask is not supported on MPS
         logger.info("RecommendationModel: loading %s on %s", model_path, self.device)
         ckpt = torch.load(model_path, map_location=self.device, weights_only=False)
         if not isinstance(ckpt, dict) or "model_state" not in ckpt or "num_items" not in ckpt:
@@ -287,41 +293,74 @@ class RecommendationModel:
 # ReviewClassifierModel
 # ---------------------------------------------------------------------------
 class ReviewClassifierModel:
+    """
+    Wraps the fine-tuned DistilBERT fake-review classifier.
+
+    The model directory (best_model/) must contain:
+      - config.json
+      - model.safetensors
+      - tokenizer.json / tokenizer_config.json
+
+    Label convention (from training notebook):
+      CG = 1  →  computer-generated / fake
+      OR = 0  →  original / genuine
+    """
+
     def __init__(self, model_path: Optional[str] = None):
-        self.model = None
-        self.vectorizer = None
+        self.distilbert_model = None
+        self.distilbert_tokenizer = None
+        self.device = "cpu"
         self.is_ai = False
 
-        if model_path and os.path.exists(model_path):
+        if not model_path:
+            return
+
+        if os.path.isdir(model_path):
+            self._load_distilbert(model_path)
+        elif os.path.exists(model_path):
+            # Legacy pickle fallback (TF-IDF + LogisticRegression)
             try:
                 with open(model_path, "rb") as f:
                     data = pickle.load(f)
-                self.model = data.get("model")
-                self.vectorizer = data.get("vectorizer")
-                self.is_ai = True
+                self._legacy_model = data.get("model")
+                self._legacy_vectorizer = data.get("vectorizer")
+                self.is_ai = bool(self._legacy_model and self._legacy_vectorizer)
             except Exception as exc:
-                logger.warning("ReviewClassifierModel: failed to load %s: %s", model_path, exc)
+                logger.warning("ReviewClassifierModel: failed to load pickle %s: %s", model_path, exc)
+        else:
+            logger.warning("ReviewClassifierModel: path does not exist: %s", model_path)
+
+    def _load_distilbert(self, model_dir: str) -> None:
+        if not TRANSFORMERS_AVAILABLE or torch is None:
+            logger.warning("ReviewClassifierModel: transformers/torch not available")
+            return
+        try:
+            if torch.cuda.is_available():
+                self.device = "cuda"
+            elif torch.backends.mps.is_available():
+                self.device = "mps"
+            logger.info("ReviewClassifierModel: loading DistilBERT from %s on %s", model_dir, self.device)
+            self.distilbert_tokenizer = DistilBertTokenizer.from_pretrained(model_dir)
+            self.distilbert_model = (
+                DistilBertForSequenceClassification.from_pretrained(model_dir)
+                .to(self.device)
+                .eval()
+            )
+            self.is_ai = True
+            logger.info("ReviewClassifierModel: DistilBERT loaded successfully")
+        except Exception as exc:
+            logger.warning("ReviewClassifierModel: failed to load DistilBERT: %s", exc)
 
     def classify(self, rating: float, review_text: str) -> Dict[str, Any]:
-        if self.is_ai and self.model and self.vectorizer:
-            # ================================================================
-            # TODO: IMPLEMENT AI REVIEW CLASSIFICATION (Students)
-            # ================================================================
-            # You have access to:
-            #   - self.model:      trained classifier (e.g. LogisticRegression)
-            #   - self.vectorizer: fitted TF-IDF vectorizer
-            #   - review_text:     the review string to classify
-            #   - rating:          the restaurant rating (1-5)
-            #
-            # Steps:
-            #   1. Transform review_text using self.vectorizer.transform()
-            #   2. Predict using self.model.predict()
-            #   3. Get confidence using self.model.predict_proba()
-            #
-            # Expected return format:
-            #   {"is_genuine": bool, "confidence": float, "model": "ai"}
-            # ================================================================
-            pass  # replace with your implementation
+        if self.distilbert_model is not None and self.distilbert_tokenizer is not None:
+            return self._distilbert_classify(review_text)
+
+        if self.is_ai and hasattr(self, "_legacy_model") and self._legacy_model and self._legacy_vectorizer:
+            X = self._legacy_vectorizer.transform([review_text])
+            pred = self._legacy_model.predict(X)[0]
+            proba = self._legacy_model.predict_proba(X)[0]
+            is_genuine = bool(pred == 0)  # OR=0 genuine, CG=1 fake
+            return {"is_genuine": is_genuine, "confidence": round(float(proba.max()), 3), "model": "ai"}
 
         # Rule-based fallback (DO NOT MODIFY)
         is_genuine, confidence, reason = True, 0.7, "Normal review"
@@ -338,6 +377,28 @@ class ReviewClassifierModel:
             is_genuine, confidence, reason = False, 0.65, "Extreme low rating with very short review"
 
         return {"is_genuine": is_genuine, "confidence": confidence, "model": "basic", "reason": reason}
+
+    def _distilbert_classify(self, review_text: str) -> Dict[str, Any]:
+        inputs = self.distilbert_tokenizer(
+            review_text,
+            padding=True,
+            truncation=True,
+            max_length=256,
+            return_tensors="pt",
+        )
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
+        with torch.no_grad():
+            outputs = self.distilbert_model(**inputs)
+
+        probs = torch.softmax(outputs.logits, dim=-1).squeeze(0)
+        pred_label = int(torch.argmax(probs).item())
+        confidence = round(float(probs[pred_label].item()), 3)
+
+        # CG=1 → fake, OR=0 → genuine
+        is_genuine = pred_label == 0
+        reason = "Genuine review" if is_genuine else "Fake/computer-generated review"
+        return {"is_genuine": is_genuine, "confidence": confidence, "model": "ai", "reason": reason}
 
 
 # ---------------------------------------------------------------------------
@@ -430,6 +491,8 @@ class FoodImageAnalyzer:
             return
         if TORCH_AVAILABLE and torch.cuda.is_available():
             self.device = "cuda"
+        elif TORCH_AVAILABLE and torch.backends.mps.is_available():
+            self.device = "mps"
 
     def _ensure_loaded(self) -> None:
         """Load CLIP + BLIP if not already loaded. Called at startup by the registry."""

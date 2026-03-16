@@ -1,18 +1,22 @@
 # ML Models Directory
 
-Place your trained `.pkl` model files here.
+Some large model files are **not tracked by git** due to GitHub's 100 MB file size limit.
+Download them from Google Drive and place them in the paths below before running the app.
 
-## Delivery time model
+## Download Links
 
-- **`../delivery_encodings.json`** (in `app/ml/`): Label encodings for Weather, Traffic_Level, Time_of_Day, Vehicle_Type. Generated when you run the encoding cell in `notebook/food_delivery_estimation.ipynb`. The app loads this so it uses the same encoding as training (no sklearn at inference).
+| File | Size | Download |
+|------|------|----------|
+| `best_model/model.safetensors` | 255 MB | [*(add your Google Drive link here)* ](https://drive.google.com/drive/folders/1BYe-q8f-nMh6bvxahl5QObjzjgJ-j6yP)|
+| `food_recommender.pt` | 17 MB | [*(add your Google Drive link here)* ](https://drive.google.com/drive/folders/1BYe-q8f-nMh6bvxahl5QObjzjgJ-j6yP)|
 
-## Expected Files
+## All Expected Files
 
-| File | Description | Format |
-|------|-------------|--------|
-| `delivery_model.pkl` | Delivery time predictor | sklearn model with `.predict()` |
-| `food_recommender.pt` | Item recommendation | PyTorch model loaded by `RecommendationModel` + `encodings/name2id.json` & `id2name.json` |
-| `review_model.pkl` | Fake review detector | `{"model": classifier, "vectorizer": tfidf}` |
-| `cuisine_model.pkl` | Cuisine classifier | `{"model": classifier, "vectorizer": tfidf}` |
-
-Train your models using: `python scripts/train_all_models.py`
+| File | Description | Tracked in git |
+|------|-------------|----------------|
+| `delivery_model.pkl` | Delivery time predictor (XGBoost) | ✅ Yes |
+| `food_recommender.pt` | Item recommendation (PyTorch Transformer) | ❌ Download |
+| `best_model/model.safetensors` | Fake review detector (DistilBERT) | ❌ Download |
+| `best_model/config.json` | DistilBERT config | ✅ Yes |
+| `best_model/tokenizer.json` | DistilBERT tokenizer | ✅ Yes |
+| `best_model/tokenizer_config.json` | Tokenizer config | ✅ Yes |

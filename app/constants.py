@@ -87,7 +87,7 @@ FOOD101_LABELS: list[str] = [
     "samosa", "sashimi", "scallops", "seaweed salad", "shrimp and grits",
     "spaghetti bolognese", "spaghetti carbonara", "spring rolls", "steak", "strawberry shortcake",
     "sushi", "tacos", "takoyaki", "tiramisu", "tuna tartare",
-    "waffles",
+    "waffles","biryani"
 ]
 
 # ---------------------------------------------------------------------------
@@ -95,7 +95,7 @@ FOOD101_LABELS: list[str] = [
 # ---------------------------------------------------------------------------
 MODEL_DELIVERY_FILENAME = "delivery_model.pkl"
 MODEL_RECOMMENDATION_FILENAME = "food_recommender.pt"
-MODEL_REVIEW_FILENAME = "review_model.pkl"
+MODEL_REVIEW_FILENAME = "best_model"  # DistilBERT model directory
 MODEL_CUISINE_FILENAME = "cuisine_model.pkl"
 
 # ---------------------------------------------------------------------------
