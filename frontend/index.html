@@ -180,11 +180,11 @@
 
       <form id="cuisine-form">
         <div class="form-group">
-          <label>Menu Items</label>
+          <label>Ingredients</label>
           <div class="tags-input" id="cuisine-tags">
-            <input type="text" id="cuisine-input" placeholder="Type a menu item & press Enter..." />
+            <input type="text" id="cuisine-input" placeholder="Type an ingredient & press Enter..." />
           </div>
-          <div class="tags-hint">Try: paneer tikka, naan, biryani, pizza, pasta, taco, noodles</div>
+          <div class="tags-hint">Try: paneer, garam masala, soy sauce, tortilla, basil, cilantro, fish sauce</div>
         </div>
         <button type="submit" class="btn-submit" id="cuisine-btn">
           <span class="btn-text">Classify Cuisine</span>
@@ -236,6 +236,301 @@
     </section>
 
   </main>
+
+  <!-- ===== Model Training Results ===== -->
+  <section class="results-section">
+    <div class="results-section__head">
+      <span class="results-section__eyebrow">TRAINING ARTIFACTS</span>
+      <h2 class="results-section__title">Model Training Results</h2>
+      <p class="results-section__subtitle">Extracted from the notebooks under <code>/notebook</code> — architectures, hyperparameters, datasets, and final evaluation metrics for every model powering the APIs above.</p>
+    </div>
+
+    <div class="results-grid">
+
+      <!-- ============= Delivery Time ============= -->
+      <article class="result-card" data-accent="delivery">
+        <header class="result-card__header">
+          <div class="result-card__icon">🚚</div>
+          <div>
+            <h3 class="result-card__title">Delivery Time Prediction</h3>
+            <div class="result-card__sub">food_delivery_estimation.ipynb</div>
+          </div>
+        </header>
+
+        <div class="result-card__chips">
+          <span class="chip">Ridge</span>
+          <span class="chip">Random Forest</span>
+          <span class="chip chip--winner">XGBoost / GradientBoosting ✓</span>
+        </div>
+
+        <div class="result-meta">
+          <div class="result-meta__row"><span>Task</span><b>Regression (minutes)</b></div>
+          <div class="result-meta__row"><span>Dataset</span><b>Food_Delivery_Times.csv · 1,000 rows</b></div>
+          <div class="result-meta__row"><span>Split</span><b>800 train / 200 test</b></div>
+          <div class="result-meta__row"><span>Tuning</span><b>GridSearchCV on every model</b></div>
+        </div>
+
+        <details class="params">
+          <summary>Best hyperparameters</summary>
+          <ul>
+            <li><code>Ridge</code> — alpha = 0.01</li>
+            <li><code>Random Forest</code> — n_estimators=100, max_depth=10, min_samples_split=5</li>
+            <li><code>GradientBoosting</code> — n_estimators=150, max_depth=3, learning_rate=0.05</li>
+          </ul>
+        </details>
+
+        <div class="metric-row">
+          <div class="metric">
+            <span class="metric__label">MAE (best)</span>
+            <span class="metric__value">6.57</span>
+          </div>
+          <div class="metric">
+            <span class="metric__label">RMSE (best)</span>
+            <span class="metric__value">9.31</span>
+          </div>
+          <div class="metric">
+            <span class="metric__label">R² (best)</span>
+            <span class="metric__value">0.81</span>
+          </div>
+        </div>
+
+        <figure class="result-fig">
+          <img src="assets/delivery_metrics.png" alt="MAE, RMSE and R² comparison across Linear Regression, Random Forest, and XGBoost" loading="lazy" />
+          <figcaption>MAE, RMSE & R² across three models — XGBoost wins on every metric.</figcaption>
+        </figure>
+        <figure class="result-fig">
+          <img src="assets/delivery_scatter.png" alt="Actual vs predicted delivery times per model" loading="lazy" />
+          <figcaption>Actual vs predicted delivery time per model on the 200-row test set.</figcaption>
+        </figure>
+      </article>
+
+      <!-- ============= Menu Recommendation ============= -->
+      <article class="result-card" data-accent="recommend">
+        <header class="result-card__header">
+          <div class="result-card__icon">🍽️</div>
+          <div>
+            <h3 class="result-card__title">Menu Recommendation</h3>
+            <div class="result-card__sub">food-recommandation.ipynb</div>
+          </div>
+        </header>
+
+        <div class="result-card__chips">
+          <span class="chip chip--winner">Custom Causal Transformer (PyTorch)</span>
+        </div>
+
+        <div class="result-meta">
+          <div class="result-meta__row"><span>Task</span><b>Next-item recommendation</b></div>
+          <div class="result-meta__row"><span>Dataset</span><b>Instacart · 174,942 users · 27,208 items</b></div>
+          <div class="result-meta__row"><span>Samples</span><b>139,953 train / 34,989 val</b></div>
+          <div class="result-meta__row"><span>Hardware</span><b>Kaggle · 2× Tesla T4 GPU</b></div>
+        </div>
+
+        <details class="params">
+          <summary>Architecture & training config</summary>
+          <ul>
+            <li>Item + hour-of-day + day-of-week + positional embeddings</li>
+            <li><code>nn.TransformerEncoderLayer</code> with causal mask</li>
+            <li>hidden_dim=64, num_heads=2, num_layers=2, dropout=0.3</li>
+            <li>MAX_SEQ_LEN=50, batch_size=256, epochs=10</li>
+            <li>Adam · lr=1e-3 · weight_decay=1e-4 · label_smoothing=0.1</li>
+            <li>Early stopping · patience=3</li>
+          </ul>
+        </details>
+
+        <div class="metric-row">
+          <div class="metric">
+            <span class="metric__label">Val Loss</span>
+            <span class="metric__value">7.9319</span>
+          </div>
+          <div class="metric">
+            <span class="metric__label">Hit @ 10</span>
+            <span class="metric__value">0.1090</span>
+          </div>
+          <div class="metric">
+            <span class="metric__label">NDCG @ 10</span>
+            <span class="metric__value">0.0593</span>
+          </div>
+        </div>
+
+        <figure class="result-fig">
+          <img src="assets/recommender_training.png" alt="Transformer training curves — loss, Hit@10, NDCG@10 over 10 epochs" loading="lazy" />
+          <figcaption>Training curves over 10 epochs — loss converges and retrieval metrics keep climbing.</figcaption>
+        </figure>
+        <figure class="result-fig">
+          <img src="assets/recommender_data.png" alt="Instacart dataset insights: top products, orders by hour, sequence lengths, orders by weekday" loading="lazy" />
+          <figcaption>Instacart EDA — top products, hourly / weekday distribution, user sequence lengths.</figcaption>
+        </figure>
+      </article>
+
+      <!-- ============= Review Classifier ============= -->
+      <article class="result-card" data-accent="review">
+        <header class="result-card__header">
+          <div class="result-card__icon">🔍</div>
+          <div>
+            <h3 class="result-card__title">Fake Review Classification</h3>
+            <div class="result-card__sub">fake-review-classifier.ipynb</div>
+          </div>
+        </header>
+
+        <div class="result-card__chips">
+          <span class="chip chip--winner">DistilBERT (fine-tuned)</span>
+        </div>
+
+        <div class="result-meta">
+          <div class="result-meta__row"><span>Task</span><b>Binary classification — CG vs OR</b></div>
+          <div class="result-meta__row"><span>Dataset</span><b>mexwell/fake-reviews-dataset · 40,432 reviews</b></div>
+          <div class="result-meta__row"><span>Split</span><b>32,345 train / 8,087 test · stratified</b></div>
+          <div class="result-meta__row"><span>Base model</span><b>distilbert-base-uncased</b></div>
+        </div>
+
+        <details class="params">
+          <summary>Fine-tuning config</summary>
+          <ul>
+            <li>num_labels=2 · max_length=256</li>
+            <li>epochs=2 · batch_size=16</li>
+            <li>lr=2e-5 · weight_decay=0.01 · warmup_steps=200</li>
+            <li>dropout=0.1 · load_best_model_at_end=True</li>
+            <li>Total training time ≈ 869s · 230.6 samples/sec eval</li>
+          </ul>
+        </details>
+
+        <div class="metric-row">
+          <div class="metric">
+            <span class="metric__label">Accuracy</span>
+            <span class="metric__value">0.9780</span>
+          </div>
+          <div class="metric">
+            <span class="metric__label">F1</span>
+            <span class="metric__value">0.9783</span>
+          </div>
+          <div class="metric">
+            <span class="metric__label">Eval Loss</span>
+            <span class="metric__value">0.1819</span>
+          </div>
+        </div>
+
+        <div class="no-plot">No plots saved in this notebook — numbers sourced from the final <code>Trainer.evaluate()</code> output.</div>
+      </article>
+
+      <!-- ============= Cuisine Classifier ============= -->
+      <article class="result-card" data-accent="cuisine">
+        <header class="result-card__header">
+          <div class="result-card__icon">🌮</div>
+          <div>
+            <h3 class="result-card__title">Cuisine Classification</h3>
+            <div class="result-card__sub">cuisine-classifier.ipynb</div>
+          </div>
+        </header>
+
+        <div class="result-card__chips">
+          <span class="chip">MultinomialNB</span>
+          <span class="chip">Logistic Regression</span>
+          <span class="chip chip--winner">LinearSVC + Calibrated ✓</span>
+          <span class="chip">MLP (256, 128)</span>
+        </div>
+
+        <div class="result-meta">
+          <div class="result-meta__row"><span>Task</span><b>20-class cuisine classification from ingredients</b></div>
+          <div class="result-meta__row"><span>Input</span><b>List of recipe ingredients</b></div>
+          <div class="result-meta__row"><span>Dataset</span><b>Kaggle “What's Cooking” · 39,774 recipes</b></div>
+          <div class="result-meta__row"><span>Split</span><b>31,819 train / 7,955 test · stratified</b></div>
+          <div class="result-meta__row"><span>Features</span><b>TF-IDF on ingredients · ngram (1,2) · min_df=2 · sublinear_tf</b></div>
+        </div>
+
+        <details class="params">
+          <summary>Best model config</summary>
+          <ul>
+            <li><code>LinearSVC</code> wrapped with <code>CalibratedClassifierCV</code></li>
+            <li>cv=3 · method=sigmoid · max_iter=2000 · class_weight=balanced</li>
+            <li>Saved as <code>app/ml/models/cuisine_model.pkl</code></li>
+          </ul>
+        </details>
+
+        <div class="metric-row">
+          <div class="metric">
+            <span class="metric__label">Accuracy</span>
+            <span class="metric__value">0.7850</span>
+          </div>
+          <div class="metric">
+            <span class="metric__label">Macro F1</span>
+            <span class="metric__value">0.7072</span>
+          </div>
+          <div class="metric">
+            <span class="metric__label">Weighted F1</span>
+            <span class="metric__value">0.7809</span>
+          </div>
+        </div>
+
+        <div class="no-plot">Notebook outputs were cleared before commit — metrics come from the <code>cuisine_model.pkl</code> artifact's metadata.</div>
+      </article>
+
+      <!-- ============= Vision (CLIP + BLIP) ============= -->
+      <article class="result-card result-card--wide" data-accent="foodimg">
+        <header class="result-card__header">
+          <div class="result-card__icon">📷</div>
+          <div>
+            <h3 class="result-card__title">Food Image Analysis</h3>
+            <div class="result-card__sub">clip-and-blip.ipynb · inference-only demo</div>
+          </div>
+        </header>
+
+        <div class="result-card__chips">
+          <span class="chip">CLIP ViT-B/32</span>
+          <span class="chip">BLIP Captioning (base)</span>
+          <span class="chip">BLIP VQA (base)</span>
+        </div>
+
+        <div class="result-meta">
+          <div class="result-meta__row"><span>Task</span><b>Zero-shot classification · captioning · VQA</b></div>
+          <div class="result-meta__row"><span>Demo set</span><b>4 Unsplash food images</b></div>
+          <div class="result-meta__row"><span>Candidate labels</span><b>12 cuisines / food types</b></div>
+          <div class="result-meta__row"><span>Training</span><b>None — pretrained weights only</b></div>
+        </div>
+
+        <details class="params">
+          <summary>Model IDs</summary>
+          <ul>
+            <li><code>openai/clip-vit-base-patch32</code></li>
+            <li><code>Salesforce/blip-image-captioning-base</code></li>
+            <li><code>Salesforce/blip-vqa-base</code></li>
+            <li>Generation: <code>max_new_tokens=50</code></li>
+          </ul>
+        </details>
+
+        <div class="metric-row metric-row--qual">
+          <div class="metric"><span class="metric__label">Pizza</span><span class="metric__value">98.3%</span></div>
+          <div class="metric"><span class="metric__label">Sushi</span><span class="metric__value">99.7%</span></div>
+          <div class="metric"><span class="metric__label">Burger</span><span class="metric__value">79.8%</span></div>
+          <div class="metric"><span class="metric__label">Salad</span><span class="metric__value">99.6%</span></div>
+        </div>
+        <div class="result-card__note">Top-1 CLIP confidence per demo image (vs 12 candidate labels).</div>
+
+        <div class="result-grid-2">
+          <figure class="result-fig">
+            <img src="assets/vision_samples.png" alt="Four demo food images: pizza, sushi, burger, salad" loading="lazy" />
+            <figcaption>Demo inputs — pizza, sushi, burger, salad.</figcaption>
+          </figure>
+          <figure class="result-fig">
+            <img src="assets/vision_heatmap.png" alt="CLIP similarity heatmap: 4 images against 12 food labels" loading="lazy" />
+            <figcaption>CLIP similarity heatmap — clean diagonal across all 4 images.</figcaption>
+          </figure>
+          <figure class="result-fig">
+            <img src="assets/vision_clip.png" alt="CLIP top-5 predictions for the pizza image" loading="lazy" />
+            <figcaption>CLIP top-5 predictions for the pizza sample.</figcaption>
+          </figure>
+          <figure class="result-fig">
+            <img src="assets/vision_blip_caption.png" alt="BLIP captions for the pizza image" loading="lazy" />
+            <figcaption>BLIP conditional & unconditional captions.</figcaption>
+          </figure>
+          <figure class="result-fig result-fig--span2">
+            <img src="assets/vision_blip_vqa.png" alt="BLIP VQA: Q&A about the pizza image" loading="lazy" />
+            <figcaption>BLIP VQA — free-form questions against the same image.</figcaption>
+          </figure>
+        </div>
+      </article>
+
+    </div>
+  </section>
 
   <!-- ===== Footer ===== -->
   <footer class="footer">

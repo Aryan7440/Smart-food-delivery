@@ -213,7 +213,7 @@ document.getElementById('review-form').addEventListener('submit', async (e) => {
 //  4. CUISINE CLASSIFICATION
 // ============================================================
 
-// Tag input management for menu items
+// Tag input management for ingredients
 const cuisineTags = [];
 
 function renderCuisineTags() {
@@ -249,14 +249,14 @@ document.getElementById('cuisine-tags').addEventListener('click', (e) => {
   }
 });
 
-// Add default cuisine tags
-['paneer tikka', 'naan', 'biryani', 'dal makhani'].forEach(t => cuisineTags.push(t));
+// Add default cuisine tags (ingredients)
+['paneer', 'garam masala', 'ginger', 'cumin', 'cilantro'].forEach(t => cuisineTags.push(t));
 renderCuisineTags();
 
 document.getElementById('cuisine-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   if (cuisineTags.length === 0) {
-    showError('cuisine-result', 'Please add at least one menu item');
+    showError('cuisine-result', 'Please add at least one ingredient');
     return;
   }
   setLoading('cuisine-btn', true);
@@ -265,7 +265,11 @@ document.getElementById('cuisine-form').addEventListener('submit', async (e) => 
     const result = await callAPI('/restaurant/cuisine-classifier', { menu_items: [...cuisineTags] });
 
     const flagEmoji = {
-      'Indian': '🇮🇳', 'Chinese': '🇨🇳', 'Italian': '🇮🇹', 'Mexican': '🇲🇽'
+      'Brazilian': '🇧🇷', 'British': '🇬🇧', 'Cajun Creole': '⚜️', 'Chinese': '🇨🇳',
+      'Filipino': '🇵🇭', 'French': '🇫🇷', 'Greek': '🇬🇷', 'Indian': '🇮🇳',
+      'Irish': '🇮🇪', 'Italian': '🇮🇹', 'Jamaican': '🇯🇲', 'Japanese': '🇯🇵',
+      'Korean': '🇰🇷', 'Mexican': '🇲🇽', 'Moroccan': '🇲🇦', 'Russian': '🇷🇺',
+      'Southern Us': '🇺🇸', 'Spanish': '🇪🇸', 'Thai': '🇹🇭', 'Vietnamese': '🇻🇳'
     };
 
     showResult('cuisine-result',

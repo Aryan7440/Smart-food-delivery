@@ -18,7 +18,10 @@ async def classify_cuisine(
 ):
     """
     Classify cuisine type based on menu items.
-    Supports: Indian, Chinese, Italian, Mexican
+
+    Supports 20 cuisines: Brazilian, British, Cajun Creole, Chinese, Filipino,
+    French, Greek, Indian, Irish, Italian, Jamaican, Japanese, Korean, Mexican,
+    Moroccan, Russian, Southern Us, Spanish, Thai, Vietnamese.
 
     Example:
     ```

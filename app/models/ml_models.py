@@ -422,24 +422,15 @@ class CuisineClassifierModel:
 
     def classify(self, menu_items: List[str]) -> Dict[str, Any]:
         if self.is_ai and self.model and self.vectorizer:
-            # ================================================================
-            # TODO: IMPLEMENT AI CUISINE CLASSIFICATION (Students)
-            # ================================================================
-            # You have access to:
-            #   - self.model:      trained classifier (e.g. LogisticRegression)
-            #   - self.vectorizer: fitted TF-IDF vectorizer
-            #   - menu_items:      list of menu item strings
-            #
-            # Steps:
-            #   1. Join menu_items into a single string
-            #   2. Transform using self.vectorizer.transform()
-            #   3. Predict using self.model.predict()
-            #   4. Get confidence using self.model.predict_proba()
-            #
-            # Expected return format:
-            #   {"cuisine": str, "confidence": float, "model": "ai"}
-            # ================================================================
-            pass  # replace with your implementation
+            text = " ".join(menu_items)
+            X = self.vectorizer.transform([text])
+            pred = self.model.predict(X)[0]
+            proba = self.model.predict_proba(X)[0]
+            return {
+                "cuisine": str(pred),
+                "confidence": round(float(proba.max()), 3),
+                "model": "ai",
+            }
 
         # Keyword-matching fallback (DO NOT MODIFY)
         scores = {c: 0 for c in CUISINE_KEYWORDS}

@@ -34,10 +34,26 @@ class TimeOfDay(str, Enum):
 
 
 class CuisineType(str, Enum):
-    INDIAN = "Indian"
+    BRAZILIAN = "Brazilian"
+    BRITISH = "British"
+    CAJUN_CREOLE = "Cajun Creole"
     CHINESE = "Chinese"
+    FILIPINO = "Filipino"
+    FRENCH = "French"
+    GREEK = "Greek"
+    INDIAN = "Indian"
+    IRISH = "Irish"
     ITALIAN = "Italian"
+    JAMAICAN = "Jamaican"
+    JAPANESE = "Japanese"
+    KOREAN = "Korean"
     MEXICAN = "Mexican"
+    MOROCCAN = "Moroccan"
+    RUSSIAN = "Russian"
+    SOUTHERN_US = "Southern Us"
+    SPANISH = "Spanish"
+    THAI = "Thai"
+    VIETNAMESE = "Vietnamese"
 
 
 class DeliveryTimeRequest(BaseModel):
