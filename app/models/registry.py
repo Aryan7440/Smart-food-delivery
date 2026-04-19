@@ -12,12 +12,14 @@ import logging
 import os
 from typing import Optional
 
+from app.config import get_settings
 from app.constants import (
     MODEL_DELIVERY_FILENAME,
     MODEL_RECOMMENDATION_FILENAME,
     MODEL_REVIEW_FILENAME,
     MODEL_CUISINE_FILENAME,
 )
+from app.models.downloader import ensure_hf_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -54,27 +56,55 @@ def load_all_models(model_dir: str, use_ai: bool = False) -> None:
 
     global _delivery, _recommendation, _review, _cuisine, _food_image
 
-    def _resolve(filename: str) -> Optional[str]:
-        """Return the full path only when use_ai is on and the file exists."""
+    settings = get_settings()
+
+    def _resolve_file(filename: str) -> Optional[str]:
+        """
+        Resolve a single-file artifact (.pkl, .pt). Expects the file to be
+        bundled into the image / Space at `<model_dir>/<filename>`.
+        """
         if not use_ai:
             return None
-        path = os.path.join(model_dir, filename)
-        if not os.path.exists(path):
-            logger.warning("Model file not found, will use fallback: %s", path)
+        local_path = os.path.join(model_dir, filename)
+        if os.path.exists(local_path):
+            return local_path
+        logger.warning("Model file not found, will use fallback: %s", local_path)
+        return None
+
+    def _resolve_review_dir() -> Optional[str]:
+        """
+        Resolve the DistilBERT directory. Preference order:
+          1. Local `<model_dir>/best_model/` if it already contains weights.
+          2. HuggingFace Hub snapshot when HF_REVIEW_REPO is set.
+          3. None (falls back to rule-based classifier).
+        """
+        if not use_ai:
             return None
-        return path
+        local_dir = os.path.join(model_dir, MODEL_REVIEW_FILENAME)
+        weights = os.path.join(local_dir, "model.safetensors")
+        if os.path.exists(weights):
+            return local_dir
+        if settings.hf_review_repo:
+            return ensure_hf_snapshot(
+                repo_id=settings.hf_review_repo,
+                local_dir=local_dir,
+                token=settings.hf_token,
+                revision=settings.hf_review_revision,
+            )
+        logger.warning("Review model dir not found, will use fallback: %s", local_dir)
+        return None
 
     logger.info("Loading delivery model...")
-    _delivery = DeliveryTimeModel(_resolve(MODEL_DELIVERY_FILENAME))
+    _delivery = DeliveryTimeModel(_resolve_file(MODEL_DELIVERY_FILENAME))
 
     logger.info("Loading recommendation model...")
-    _recommendation = RecommendationModel(_resolve(MODEL_RECOMMENDATION_FILENAME))
+    _recommendation = RecommendationModel(_resolve_file(MODEL_RECOMMENDATION_FILENAME))
 
     logger.info("Loading review classifier...")
-    _review = ReviewClassifierModel(_resolve(MODEL_REVIEW_FILENAME))
+    _review = ReviewClassifierModel(_resolve_review_dir())
 
     logger.info("Loading cuisine classifier...")
-    _cuisine = CuisineClassifierModel(_resolve(MODEL_CUISINE_FILENAME))
+    _cuisine = CuisineClassifierModel(_resolve_file(MODEL_CUISINE_FILENAME))
 
     logger.info("Loading food image analyzer (CLIP + BLIP)...")
     _food_image = FoodImageAnalyzer()
