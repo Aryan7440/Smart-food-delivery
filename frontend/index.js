@@ -5,7 +5,7 @@
  * Each function: reads form → sends POST request → shows result.
  */
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = '';
 
 // ============================================================
 //  UTILITY HELPERS
